@@ -31,6 +31,7 @@ struct EdgeLauncherView: View {
             } else {
                 EdgeTrigger(
                     onRight: onRight,
+                    triggerMode: model.triggerMode,
                     action: controller.expand,
                     onDrag: { controller.moveTrigger(to: NSEvent.mouseLocation) },
                     onDragEnded: controller.finishMovingTrigger
@@ -48,6 +49,7 @@ struct EdgeLauncherView: View {
 
 private struct EdgeTrigger: View {
     let onRight: Bool
+    let triggerMode: LauncherTriggerMode
     let action: () -> Void
     let onDrag: () -> Void
     let onDragEnded: () -> Void
@@ -67,17 +69,22 @@ private struct EdgeTrigger: View {
                     .shadow(color: Color.accentColor.opacity(0.65), radius: 5)
             }
             .frame(width: 16, height: 44)
-            .shadow(color: .black.opacity(0.3), radius: isHovering ? 8 : 4, x: onRight ? -2 : 2, y: 1)
             .scaleEffect(isHovering ? 1.06 : 1)
         .contentShape(Capsule())
         .onHover { isHovering = $0 }
-        .onTapGesture(perform: action)
+        .onTapGesture {
+            if triggerMode == .click {
+                action()
+            }
+        }
         .simultaneousGesture(
             DragGesture(minimumDistance: 4)
                 .onChanged { _ in onDrag() }
                 .onEnded { _ in onDragEnded() }
         )
-        .help("Quick Start（拖拽可调整位置）")
+        .help(triggerMode == .hover
+              ? "Quick Start（悬浮展开，拖拽可调整位置）"
+              : "Quick Start（点击展开，拖拽可调整位置）")
         .padding(onRight ? .trailing : .leading, 2)
     }
 }

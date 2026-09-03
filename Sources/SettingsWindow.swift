@@ -66,6 +66,7 @@ private struct SettingsView: View {
     let onGlobalShortcutChanged: () -> Void
     @State private var showOverFullScreen = LauncherSettings.showOverFullScreen
     @State private var expandWhileSettingsOpen = LauncherSettings.expandWhileSettingsOpen
+    @State private var triggerMode = LauncherSettings.triggerMode
     @State private var launchAtLogin = LauncherSettings.launchAtLogin
     @State private var menuRadius = LauncherSettings.menuRadius
     @State private var iconSize = LauncherSettings.iconSize
@@ -160,6 +161,17 @@ private struct SettingsView: View {
             )
             .onChange(of: expandWhileSettingsOpen) { _, isEnabled in
                 LauncherSettings.expandWhileSettingsOpen = isEnabled
+                onConfigurationChanged()
+            }
+
+            Picker("触发类型", selection: $triggerMode) {
+                ForEach(LauncherTriggerMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: triggerMode) { _, mode in
+                LauncherSettings.triggerMode = mode
                 onConfigurationChanged()
             }
 
