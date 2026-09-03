@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  pull_request:
+    branches: [master]
+    types: [closed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-master
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Calculate the next patch version
+        id: version
+        shell: bash
+        run: |
+          latest_tag="$(git tag -l 'v*' --sort=-version:refname | awk 'NR == 1')"
+          if [ -z "$latest_tag" ]; then
+            version="1.0.0"
+          elif [[ "$latest_tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
+          else
+            echo "::error::Latest tag '$latest_tag' must use vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "build=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build the app
+        env:
+          MARKETING_VERSION: ${{ steps.version.outputs.version }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build }}
+        run: ./build.sh release
+
+      - name: Package the disk image
+        run: ./scripts/make-dmg.sh "${{ steps.version.outputs.version }}"
+
+      - name: Verify the package
+        run: |
+          codesign --verify --deep --strict build/QuickStart.app
+          hdiutil verify "build/QuickStart-${{ steps.version.outputs.version }}.dmg"
+
+      - name: Create and push the version tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$TAG" "build/QuickStart-${VERSION}.dmg" \
+            --title "Quick Start ${VERSION}" \
+            --generate-notes
