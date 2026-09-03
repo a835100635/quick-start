@@ -1,0 +1,23 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: ./build.sh release
+      - name: Verify the bundle
+        run: |
+          test -x build/QuickStart.app/Contents/MacOS/QuickStart
+          codesign --verify --deep --strict build/QuickStart.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QuickStart-app
+          path: build/QuickStart.app
