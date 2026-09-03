@@ -9,6 +9,7 @@ final class EdgeLauncherModel: ObservableObject {
     @Published var isDragging = false
     @Published var revealTick = 0
     @Published var edge: LauncherEdge = LauncherSettings.edge
+    @Published var triggerMode: LauncherTriggerMode = LauncherSettings.triggerMode
     @Published var menuRadius = CGFloat(LauncherSettings.menuRadius)
     @Published var iconSize = CGFloat(LauncherSettings.iconSize)
     @Published var animationSpeed = LauncherSettings.animationSpeed
@@ -30,6 +31,10 @@ final class EdgeLauncherController: NSObject {
     private let panel = LauncherPanel()
     private var collapseWork: DispatchWorkItem?
     private var keepsExpandedForSettings = false
+
+    var triggerFrame: NSRect {
+        panel.frame
+    }
 
     private var screen: NSScreen? {
         NSScreen.screens.first {
@@ -144,6 +149,7 @@ final class EdgeLauncherController: NSObject {
     }
 
     private func pointerEntered() {
+        guard LauncherSettings.triggerMode == .hover else { return }
         collapseWork?.cancel()
         expand()
     }
@@ -165,6 +171,7 @@ final class EdgeLauncherController: NSObject {
         let visibleFrame = screen.visibleFrame
         let onRight = LauncherSettings.edge == .right
         model.edge = LauncherSettings.edge
+        model.triggerMode = LauncherSettings.triggerMode
         model.menuRadius = CGFloat(LauncherSettings.menuRadius)
         model.iconSize = CGFloat(LauncherSettings.iconSize)
         model.animationSpeed = LauncherSettings.animationSpeed
@@ -328,6 +335,7 @@ final class LauncherManager {
     private var edgeLaunchers: [CGDirectDisplayID: EdgeLauncherController] = [:]
     private let fullMenu = FullMenuController()
     private let settingsWindow = SettingsWindowController()
+    private var firstLaunchGuide: FirstLaunchGuideController?
 
     init() {
         fullMenu.manager = self
@@ -338,6 +346,9 @@ final class LauncherManager {
             queue: .main
         ) { [weak self] _ in
             self?.rebuild()
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.showFirstLaunchGuideIfNeeded()
         }
     }
 
@@ -417,6 +428,23 @@ final class LauncherManager {
         for (displayID, launcher) in edgeLaunchers {
             launcher.setSettingsPreview(displayID == previewDisplayID)
         }
+    }
+
+    private func showFirstLaunchGuideIfNeeded() {
+        guard !LauncherSettings.hasShownFirstLaunchGuide,
+              let screen = screenAtPointer() ?? NSScreen.main ?? NSScreen.screens.first,
+              let displayID = displayID(for: screen),
+              let launcher = edgeLaunchers[displayID]
+        else { return }
+
+        let guide = FirstLaunchGuideController()
+        guide.show(
+            anchorFrame: launcher.triggerFrame,
+            on: screen,
+            edge: LauncherSettings.edge,
+            triggerMode: LauncherSettings.triggerMode
+        )
+        firstLaunchGuide = guide
     }
 
     private func displayID(for screen: NSScreen) -> CGDirectDisplayID? {

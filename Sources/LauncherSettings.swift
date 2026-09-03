@@ -7,6 +7,22 @@ enum LauncherEdge: String {
     case right
 }
 
+enum LauncherTriggerMode: String, CaseIterable, Identifiable {
+    case hover
+    case click
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .hover:
+            return "鼠标悬浮"
+        case .click:
+            return "鼠标点击"
+        }
+    }
+}
+
 enum LauncherSettings {
     private static let defaults = UserDefaults.standard
 
@@ -57,6 +73,18 @@ enum LauncherSettings {
     static var expandWhileSettingsOpen: Bool {
         get { defaults.object(forKey: "expandWhileSettingsOpen") as? Bool ?? true }
         set { defaults.set(newValue, forKey: "expandWhileSettingsOpen") }
+    }
+
+    static var triggerMode: LauncherTriggerMode {
+        get {
+            LauncherTriggerMode(rawValue: defaults.string(forKey: "triggerMode") ?? "") ?? .hover
+        }
+        set { defaults.set(newValue.rawValue, forKey: "triggerMode") }
+    }
+
+    static var hasShownFirstLaunchGuide: Bool {
+        get { defaults.bool(forKey: "hasShownFirstLaunchGuide") }
+        set { defaults.set(newValue, forKey: "hasShownFirstLaunchGuide") }
     }
 
     static var launchAtLogin: Bool {
