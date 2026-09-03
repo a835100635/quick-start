@@ -32,6 +32,18 @@ final class LauncherContainerView: NSView {
     var onPointerEntered: (() -> Void)?
     var onPointerExited: (() -> Void)?
 
+    override var isOpaque: Bool { false }
+
+    override init(frame frameRect: NSRect = .zero) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
@@ -62,8 +74,12 @@ final class LauncherContainerView: NSView {
 }
 
 final class LauncherHostingView<Content: View>: NSHostingView<Content> {
+    override var isOpaque: Bool { false }
+
     required init(rootView: Content) {
         super.init(rootView: rootView)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
     }
 
     @MainActor @preconcurrency required dynamic init?(coder: NSCoder) {

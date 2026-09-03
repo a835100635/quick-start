@@ -6,9 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         launcherManager = LauncherManager()
-        HotKeys.shared.register { [weak self] in
-            self?.launcherManager.toggleFullMenu()
-        }
+        launcherManager.reloadGlobalShortcut()
         buildMainMenu()
     }
 

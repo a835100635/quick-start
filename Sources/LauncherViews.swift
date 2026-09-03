@@ -86,16 +86,36 @@ private struct EdgeDragHandle: View {
     let onRight: Bool
     let onDrag: () -> Void
     let onDragEnded: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
         Color.clear
             .frame(width: 20, height: 52)
+            .overlay {
+                if isHovering {
+                    Image(systemName: "arrow.up.and.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .frame(width: 20, height: 52)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(Color.black.opacity(0.45))
+                                .overlay {
+                                    Capsule(style: .continuous)
+                                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                                }
+                        )
+                        .transition(.opacity)
+                }
+            }
             .contentShape(Rectangle())
+            .onHover { isHovering = $0 }
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { _ in onDrag() }
                     .onEnded { _ in onDragEnded() }
             )
+            .animation(.easeOut(duration: 0.12), value: isHovering)
             .help("拖拽以移动 Quick Start")
             .padding(onRight ? .trailing : .leading, 2)
             .frame(
@@ -179,11 +199,11 @@ struct FullCircleMenuView: View {
             let count = max(store.items.count, 1)
 
             ZStack {
-                Circle()
-                    .fill(.ultraThinMaterial)
-                    .overlay {
-                        Circle().stroke(Color.white.opacity(0.2), lineWidth: 1)
-                    }
+                ZStack {
+                    Circle().fill(Color.white.opacity(0.38))
+                    Circle().fill(Color.black.opacity(0.14))
+                    Circle().stroke(Color.white.opacity(0.28), lineWidth: 1)
+                }
                     .frame(width: radius * 2 + 104, height: radius * 2 + 104)
                     .shadow(color: .black.opacity(0.24), radius: 24, y: 8)
                     .position(center)

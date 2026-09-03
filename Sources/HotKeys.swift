@@ -17,6 +17,7 @@ final class HotKeys {
         installHandler()
 
         let shortcut = LauncherSettings.globalShortcut
+        guard shortcut.isSet else { return }
         let hotKeyID = EventHotKeyID(signature: signature, id: 1)
         let status = RegisterEventHotKey(
             shortcut.keyCode,

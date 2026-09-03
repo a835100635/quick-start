@@ -1,5 +1,6 @@
 import Carbon.HIToolbox
 import Foundation
+import ServiceManagement
 
 enum LauncherEdge: String {
     case left
@@ -58,12 +59,24 @@ enum LauncherSettings {
         set { defaults.set(newValue, forKey: "expandWhileSettingsOpen") }
     }
 
+    static var launchAtLogin: Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+
+    static func setLaunchAtLogin(_ enabled: Bool) throws {
+        if enabled {
+            try SMAppService.mainApp.register()
+        } else {
+            try SMAppService.mainApp.unregister()
+        }
+    }
+
     static var globalShortcut: Shortcut {
         get {
             guard let data = defaults.data(forKey: "globalShortcut"),
                   let shortcut = try? JSONDecoder().decode(Shortcut.self, from: data)
             else {
-                return Shortcut(keyCode: UInt32(kVK_Space), modifiers: UInt32(cmdKey | optionKey))
+                return Shortcut(keyCode: UInt32(kVK_Escape), modifiers: UInt32(shiftKey))
             }
             return shortcut
         }

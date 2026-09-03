@@ -4,11 +4,12 @@ import UniformTypeIdentifiers
 
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var onConfigurationChanged: (() -> Void)?
+    private var onGlobalShortcutChanged: (() -> Void)?
     private var onClose: (() -> Void)?
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: 620),
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 705),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -30,15 +31,20 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     func show(
         onConfigurationChanged: @escaping () -> Void,
+        onGlobalShortcutChanged: @escaping () -> Void,
         onClose: @escaping () -> Void
     ) {
         self.onConfigurationChanged = onConfigurationChanged
+        self.onGlobalShortcutChanged = onGlobalShortcutChanged
         self.onClose = onClose
         window?.contentView = NSHostingView(
             rootView: SettingsView(
                 store: .shared,
                 onConfigurationChanged: { [weak self] in
                     self?.onConfigurationChanged?()
+                },
+                onGlobalShortcutChanged: { [weak self] in
+                    self?.onGlobalShortcutChanged?()
                 }
             )
         )
@@ -57,11 +63,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 private struct SettingsView: View {
     @ObservedObject var store: LauncherStore
     let onConfigurationChanged: () -> Void
+    let onGlobalShortcutChanged: () -> Void
     @State private var showOverFullScreen = LauncherSettings.showOverFullScreen
     @State private var expandWhileSettingsOpen = LauncherSettings.expandWhileSettingsOpen
+    @State private var launchAtLogin = LauncherSettings.launchAtLogin
     @State private var menuRadius = LauncherSettings.menuRadius
     @State private var iconSize = LauncherSettings.iconSize
     @State private var animationSpeed = LauncherSettings.animationSpeed
+    @State private var globalShortcut = LauncherSettings.globalShortcut
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -133,6 +142,19 @@ private struct SettingsView: View {
             }
 
             Toggle(
+                "登录时启动 Quick Start",
+                isOn: $launchAtLogin
+            )
+            .onChange(of: launchAtLogin) { _, isEnabled in
+                do {
+                    try LauncherSettings.setLaunchAtLogin(isEnabled)
+                } catch {
+                    NSLog("Quick Start: 登录项注册失败 — \(error.localizedDescription)")
+                    launchAtLogin = LauncherSettings.launchAtLogin
+                }
+            }
+
+            Toggle(
                 "打开设置时展开快捷菜单",
                 isOn: $expandWhileSettingsOpen
             )
@@ -189,12 +211,30 @@ private struct SettingsView: View {
                 onConfigurationChanged()
             }
 
-            Text("全局菜单快捷键：\(LauncherSettings.globalShortcut.display)")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("全局菜单快捷键")
+                ShortcutRecorderField(shortcut: globalShortcut) { shortcut in
+                    globalShortcut = shortcut
+                    LauncherSettings.globalShortcut = shortcut
+                    onGlobalShortcutChanged()
+                }
+                .frame(width: 150, height: 28)
+                Text("点击后按下新组合键；按 ⌫ 清除")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("退出 Quick Start", role: .destructive) {
+                    NSApp.terminate(nil)
+                }
+            }
         }
         .padding(22)
-        .frame(minWidth: 540, minHeight: 620)
+        .frame(minWidth: 540, minHeight: 705)
     }
 
     private func choose(_ kind: LauncherItemKind) {

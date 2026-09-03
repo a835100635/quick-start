@@ -2,7 +2,7 @@
 
 常驻在 macOS 屏幕右边缘的径向快捷启动器。
 
-技术栈与 `noty` 保持一致：
+技术栈：
 
 - Swift 5
 - SwiftUI + AppKit

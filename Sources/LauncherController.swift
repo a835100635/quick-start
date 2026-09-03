@@ -347,6 +347,12 @@ final class LauncherManager {
         fullMenu.toggle(on: screen)
     }
 
+    func reloadGlobalShortcut() {
+        HotKeys.shared.register { [weak self] in
+            self?.toggleFullMenu()
+        }
+    }
+
     func edgeDidActivate(_ active: EdgeLauncherController) {
         fullMenu.dismiss()
         edgeLaunchers.values
@@ -366,6 +372,7 @@ final class LauncherManager {
         dismissAll()
         settingsWindow.show(
             onConfigurationChanged: { [weak self] in self?.refresh() },
+            onGlobalShortcutChanged: { [weak self] in self?.reloadGlobalShortcut() },
             onClose: { [weak self] in self?.refresh() }
         )
         syncSettingsPreview()
