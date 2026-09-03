@@ -32,9 +32,27 @@ cp "$ROOT/Info.plist" "$APP/Contents/Info.plist"
 [ -f "$ROOT/Resources/AppIcon.icns" ] && cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
-IDENTITY="${CODESIGN_IDENTITY:--}"
+IDENTITY="${CODESIGN_IDENTITY:-}"
+if [ -z "$IDENTITY" ]; then
+    IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+        | awk -F'"' '/Developer ID Application:/ { print $2; exit }')"
+fi
+IDENTITY="${IDENTITY:--}"
+
+if [ "${REQUIRE_DEVELOPER_ID:-0}" = "1" ] \
+    && [[ "$IDENTITY" != Developer\ ID\ Application:* ]]; then
+    echo "error: a Developer ID Application certificate is required" >&2
+    echo "       set CODESIGN_IDENTITY or install the certificate first" >&2
+    exit 1
+fi
+
 SIGN_OPTS=(--force --sign "$IDENTITY")
-[ "$IDENTITY" != "-" ] && SIGN_OPTS+=(--options runtime --timestamp)
+if [ "$IDENTITY" != "-" ]; then
+    SIGN_OPTS+=(--options runtime --timestamp)
+    echo "→ signing with $IDENTITY"
+else
+    echo "warning: using an ad hoc signature; this app cannot be distributed" >&2
+fi
 codesign "${SIGN_OPTS[@]}" "$APP"
 codesign --verify --deep --strict "$APP" && echo "✓ signature valid"
 

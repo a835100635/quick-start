@@ -32,6 +32,25 @@
 ./build.sh run       # 构建并启动
 ```
 
+### 签名与发布
+
+本机安装了 Developer ID Application 证书时，`build.sh` 会自动选择该证书。
+也可以显式指定证书，并阻止构建回退到不可发布的 ad-hoc 签名：
+
+```sh
+CODESIGN_IDENTITY="Developer ID Application: Your Company (TEAMID)" \
+REQUIRE_DEVELOPER_ID=1 ./build.sh release
+./scripts/make-dmg.sh 1.0.0
+```
+
+分发给其他用户前还应完成 Apple 公证。先在钥匙串中创建 `notarytool` 配置，
+再执行：
+
+```sh
+xcrun notarytool store-credentials quickstart
+NOTARY_PROFILE=quickstart ./scripts/notarize.sh 1.0.0
+```
+
 ## 目录结构
 
 ```text
