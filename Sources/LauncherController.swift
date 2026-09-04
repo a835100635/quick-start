@@ -7,6 +7,7 @@ final class EdgeLauncherModel: ObservableObject {
     /// Keeps the radial menu in the hierarchy while its icons return to centre.
     @Published var isMenuVisible = false
     @Published var isDragging = false
+    @Published var isOffWorkReminder = false
     @Published var revealTick = 0
     @Published var edge: LauncherEdge = LauncherSettings.edge
     @Published var triggerMode: LauncherTriggerMode = LauncherSettings.triggerMode
@@ -17,6 +18,7 @@ final class EdgeLauncherModel: ObservableObject {
 
 final class FullMenuModel: ObservableObject {
     @Published var isVisible = false
+    @Published var isOffWorkReminder = false
     @Published var selectedID: UUID?
     @Published var menuRadius = CGFloat(LauncherSettings.menuRadius)
     @Published var iconSize = CGFloat(LauncherSettings.iconSize)
@@ -31,9 +33,22 @@ final class EdgeLauncherController: NSObject {
     private let panel = LauncherPanel()
     private var collapseWork: DispatchWorkItem?
     private var keepsExpandedForSettings = false
+    private var keepsExpandedForReminder = false
+    private var isPointerInside = false
 
     var triggerFrame: NSRect {
         panel.frame
+    }
+
+    var reminderFaceFrame: NSRect? {
+        guard model.isMenuVisible else { return nil }
+        let onRight = LauncherSettings.edge == .right
+        return NSRect(
+            x: onRight ? panel.frame.maxX - 60 : panel.frame.minX + 8,
+            y: panel.frame.midY - 26,
+            width: 52,
+            height: 52
+        )
     }
 
     private var screen: NSScreen? {
@@ -101,18 +116,38 @@ final class EdgeLauncherController: NSObject {
         let work = DispatchWorkItem { [weak self] in
             guard let self, !self.model.isExpanded else { return }
             self.model.isMenuVisible = false
-            self.layout(expanded: false)
+            self.layout(expanded: false, triggerOffscreen: true)
+            self.animateTriggerIntoView()
         }
         collapseWork = work
         // Account for the staggered radial return before removing the menu view.
         DispatchQueue.main.asyncAfter(
-            deadline: .now() + 0.72 / LauncherSettings.animationSpeed,
+            deadline: .now() + 0.92 / LauncherSettings.animationSpeed,
             execute: work
         )
     }
 
     func openSettings() {
         manager?.showSettings()
+    }
+
+    func showOffWorkReminder() {
+        keepsExpandedForReminder = true
+        model.isOffWorkReminder = true
+        expand()
+    }
+
+    func dismissOffWorkReminder() {
+        guard keepsExpandedForReminder else { return }
+        keepsExpandedForReminder = false
+        collapse()
+        // Keep the reminder face active until it has returned to the edge so
+        // normal shortcut icons never reappear during the collapse animation.
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + 0.92 / LauncherSettings.animationSpeed
+        ) { [weak self] in
+            self?.model.isOffWorkReminder = false
+        }
     }
 
     func launch(_ item: LauncherItem) {
@@ -149,13 +184,19 @@ final class EdgeLauncherController: NSObject {
     }
 
     private func pointerEntered() {
+        isPointerInside = true
         guard LauncherSettings.triggerMode == .hover else { return }
         collapseWork?.cancel()
         expand()
     }
 
     private func pointerExited() {
-        guard model.isExpanded, !model.isDragging, !keepsExpandedForSettings else { return }
+        isPointerInside = false
+        guard model.isExpanded,
+              !model.isDragging,
+              !keepsExpandedForSettings,
+              !keepsExpandedForReminder
+        else { return }
         collapseWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, !self.panel.frame.contains(NSEvent.mouseLocation) else { return }
@@ -165,7 +206,7 @@ final class EdgeLauncherController: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.24, execute: work)
     }
 
-    private func layout(expanded: Bool) {
+    private func layout(expanded: Bool, triggerOffscreen: Bool = false) {
         guard let screen else { return }
         let fullFrame = screen.frame
         let visibleFrame = screen.visibleFrame
@@ -192,7 +233,9 @@ final class EdgeLauncherController: NSObject {
             )
         } else {
             frame = NSRect(
-                x: onRight ? fullFrame.maxX - 20 : fullFrame.minX,
+                x: triggerOffscreen
+                    ? (onRight ? fullFrame.maxX : fullFrame.minX - 20)
+                    : (onRight ? fullFrame.maxX - 20 : fullFrame.minX),
                 y: centerY - 26,
                 width: 20,
                 height: 52
@@ -200,6 +243,30 @@ final class EdgeLauncherController: NSObject {
         }
 
         panel.setFrame(frame, display: true, animate: false)
+    }
+
+    private func animateTriggerIntoView() {
+        guard let screen else { return }
+        let fullFrame = screen.frame
+        let visibleFrame = screen.visibleFrame
+        let onRight = LauncherSettings.edge == .right
+        let centerY = visibleFrame.minY + visibleFrame.height * LauncherSettings.verticalPosition
+        let frame = NSRect(
+            x: onRight ? fullFrame.maxX - 20 : fullFrame.minX,
+            y: centerY - 26,
+            width: 20,
+            height: 52
+        )
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.22 / LauncherSettings.animationSpeed
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(frame, display: true)
+        }
+    }
+
+    var isPointerHovering: Bool {
+        isPointerInside
     }
 }
 
@@ -336,10 +403,14 @@ final class LauncherManager {
     private let fullMenu = FullMenuController()
     private let settingsWindow = SettingsWindowController()
     private var firstLaunchGuide: FirstLaunchGuideController?
+    private var offWorkReminderTimer: Timer?
+    private var offWorkReminderBubble: OffWorkReminderController?
+    private var isPresentingOffWorkReminder = false
 
     init() {
         fullMenu.manager = self
         rebuild()
+        scheduleExpressionReminders()
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
@@ -354,6 +425,7 @@ final class LauncherManager {
 
     func toggleFullMenu() {
         guard let screen = screenAtPointer() ?? NSScreen.main else { return }
+        dismissOffWorkReminder()
         edgeLaunchers.values.forEach { $0.collapse() }
         fullMenu.toggle(on: screen)
     }
@@ -372,6 +444,7 @@ final class LauncherManager {
     }
 
     func dismissAll() {
+        dismissOffWorkReminder()
         edgeLaunchers.values.forEach {
             $0.setSettingsPreview(false)
             $0.collapse()
@@ -384,6 +457,9 @@ final class LauncherManager {
         settingsWindow.show(
             onConfigurationChanged: { [weak self] in self?.refresh() },
             onGlobalShortcutChanged: { [weak self] in self?.reloadGlobalShortcut() },
+            onOffWorkReminderPreview: { [weak self] message in
+                self?.presentOffWorkReminder(message: message)
+            },
             onClose: { [weak self] in self?.refresh() }
         )
         syncSettingsPreview()
@@ -395,6 +471,7 @@ final class LauncherManager {
             $0.layout()
         }
         fullMenu.panelRefresh()
+        scheduleExpressionReminders()
         syncSettingsPreview()
     }
 
@@ -414,6 +491,87 @@ final class LauncherManager {
 
     private func screenAtPointer() -> NSScreen? {
         NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
+    }
+
+    private func scheduleExpressionReminders() {
+        offWorkReminderTimer?.invalidate()
+        offWorkReminderTimer = nil
+
+        guard LauncherSettings.offWorkReminderEnabled else { return }
+        guard let next = nextExpressionReminder() else { return }
+        let interval = max(1, next.date.timeIntervalSinceNow)
+        offWorkReminderTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) {
+            [weak self] _ in
+            self?.handleExpressionReminder(id: next.reminder.id)
+        }
+    }
+
+    private func nextExpressionReminder(from now: Date = Date())
+        -> (reminder: ExpressionReminder, date: Date)?
+    {
+        LauncherSettings.expressionReminders
+            .map { reminder in
+                (reminder, nextReminderDate(for: reminder, from: now))
+            }
+            .min { $0.1 < $1.1 }
+    }
+
+    private func nextReminderDate(for reminder: ExpressionReminder, from now: Date) -> Date {
+        let calendar = Calendar.current
+        var today = calendar.dateComponents([.year, .month, .day], from: now)
+        today.hour = reminder.hour
+        today.minute = reminder.minute
+        today.second = 0
+        let scheduledTime = calendar.date(from: today) ?? now
+
+        return scheduledTime > now
+            ? scheduledTime
+            : calendar.date(byAdding: .day, value: 1, to: scheduledTime) ?? scheduledTime
+    }
+
+    private func handleExpressionReminder(id: UUID) {
+        defer { scheduleExpressionReminders() }
+        guard !edgeLaunchers.values.contains(where: \.isPointerHovering) else { return }
+        guard let reminder = LauncherSettings.expressionReminders.first(where: { $0.id == id }) else {
+            return
+        }
+        presentOffWorkReminder(message: reminder.message)
+    }
+
+    private func presentOffWorkReminder(message: String) {
+        guard !isPresentingOffWorkReminder,
+              let screen = screenAtPointer() ?? NSScreen.main,
+              let displayID = displayID(for: screen),
+              let launcher = edgeLaunchers[displayID]
+        else { return }
+
+        isPresentingOffWorkReminder = true
+        fullMenu.dismiss()
+        launcher.showOffWorkReminder()
+
+        guard let anchorFrame = launcher.reminderFaceFrame else {
+            dismissOffWorkReminder()
+            return
+        }
+
+        let bubble = OffWorkReminderController()
+        offWorkReminderBubble = bubble
+        bubble.show(
+            anchorFrame: anchorFrame,
+            on: screen,
+            edge: LauncherSettings.edge,
+            message: message
+        ) { [weak self] in
+            self?.dismissOffWorkReminder()
+        }
+    }
+
+    private func dismissOffWorkReminder() {
+        guard isPresentingOffWorkReminder else { return }
+        isPresentingOffWorkReminder = false
+        offWorkReminderBubble?.dismiss()
+        offWorkReminderBubble = nil
+        edgeLaunchers.values.forEach { $0.dismissOffWorkReminder() }
     }
 
     private func syncSettingsPreview() {
