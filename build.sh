@@ -10,8 +10,8 @@ APP="$ROOT/build/QuickStart.app"
 SDK="$(xcrun --show-sdk-path --sdk macosx)"
 MODE="${1:-release}"
 
-MARKETING_VERSION="${MARKETING_VERSION:-1.0.0}"
-BUILD_NUMBER="${BUILD_NUMBER:-1}"
+MARKETING_VERSION="${MARKETING_VERSION:-1.1.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-12}"
 
 OPT="-O"
 [ "$MODE" = "debug" ] && OPT="-Onone"
