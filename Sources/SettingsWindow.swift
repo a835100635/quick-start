@@ -5,11 +5,12 @@ import UniformTypeIdentifiers
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var onConfigurationChanged: (() -> Void)?
     private var onGlobalShortcutChanged: (() -> Void)?
+    private var onOffWorkReminderPreview: ((String) -> Void)?
     private var onClose: (() -> Void)?
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: 705),
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 760),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -32,10 +33,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     func show(
         onConfigurationChanged: @escaping () -> Void,
         onGlobalShortcutChanged: @escaping () -> Void,
+        onOffWorkReminderPreview: @escaping (String) -> Void,
         onClose: @escaping () -> Void
     ) {
         self.onConfigurationChanged = onConfigurationChanged
         self.onGlobalShortcutChanged = onGlobalShortcutChanged
+        self.onOffWorkReminderPreview = onOffWorkReminderPreview
         self.onClose = onClose
         window?.contentView = NSHostingView(
             rootView: SettingsView(
@@ -45,6 +48,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 },
                 onGlobalShortcutChanged: { [weak self] in
                     self?.onGlobalShortcutChanged?()
+                },
+                onOffWorkReminderPreview: { [weak self] message in
+                    self?.onOffWorkReminderPreview?(message)
                 }
             )
         )
@@ -72,8 +78,30 @@ private struct SettingsView: View {
     @State private var iconSize = LauncherSettings.iconSize
     @State private var animationSpeed = LauncherSettings.animationSpeed
     @State private var globalShortcut = LauncherSettings.globalShortcut
+    @State private var offWorkReminderEnabled = LauncherSettings.offWorkReminderEnabled
+    @State private var expressionReminders = LauncherSettings.expressionReminders
+    @State private var editingReminder: ExpressionReminder?
+    @State private var isAddingReminder = false
+    let onOffWorkReminderPreview: (String) -> Void
 
     var body: some View {
+        TabView {
+            launcherSettings
+                .tabItem {
+                    Label("快捷启动", systemImage: "square.grid.2x2")
+                }
+
+            expressionSettings
+                .tabItem {
+                    Label("表情", systemImage: "face.smiling")
+                }
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 24)
+        .frame(minWidth: 540, minHeight: 760)
+    }
+
+    private var launcherSettings: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("快捷启动")
                 .font(.title2.weight(.semibold))
@@ -245,8 +273,126 @@ private struct SettingsView: View {
                 }
             }
         }
-        .padding(22)
-        .frame(minWidth: 540, minHeight: 705)
+    }
+
+    private var expressionSettings: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("表情提醒")
+                .font(.title2.weight(.semibold))
+
+            Text("达到提醒时间且鼠标未悬停在启动器上时，自动显示墨镜表情和提示气泡。每个时间点只能设置一条提醒。")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Toggle("启用表情提醒", isOn: $offWorkReminderEnabled)
+                .onChange(of: offWorkReminderEnabled) { _, isEnabled in
+                    LauncherSettings.offWorkReminderEnabled = isEnabled
+                    onConfigurationChanged()
+                }
+
+            List {
+                ForEach(sortedExpressionReminders) { reminder in
+                    HStack(spacing: 12) {
+                        Text(reminder.timeTitle)
+                            .font(.headline.monospacedDigit())
+                            .frame(width: 48, alignment: .leading)
+
+                        Text(reminder.message)
+                            .lineLimit(1)
+
+                        Spacer()
+
+                        Button {
+                            onOffWorkReminderPreview(reminder.message)
+                        } label: {
+                            Image(systemName: "play.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("预览提醒")
+
+                        Button {
+                            editingReminder = reminder
+                        } label: {
+                            Image(systemName: "pencil")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("编辑提醒")
+
+                        Button(role: .destructive) {
+                            expressionReminders.removeAll { $0.id == reminder.id }
+                            saveExpressionReminders()
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("删除提醒")
+                    }
+                }
+            }
+            .frame(minHeight: 180)
+
+            HStack {
+                Button("添加提醒…") {
+                    isAddingReminder = true
+                }
+
+                Spacer()
+
+                Text("\(expressionReminders.count) 条提醒")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .sheet(isPresented: $isAddingReminder) {
+            ExpressionReminderEditor(
+                title: "添加提醒",
+                reminder: nextAvailableReminder,
+                existingReminders: expressionReminders
+            ) { reminder in
+                expressionReminders.append(reminder)
+                saveExpressionReminders()
+                isAddingReminder = false
+            }
+        }
+        .sheet(item: $editingReminder) { reminder in
+            ExpressionReminderEditor(
+                title: "编辑提醒",
+                reminder: reminder,
+                existingReminders: expressionReminders.filter { $0.id != reminder.id }
+            ) { updatedReminder in
+                guard let index = expressionReminders.firstIndex(where: {
+                    $0.id == updatedReminder.id
+                }) else { return }
+                expressionReminders[index] = updatedReminder
+                saveExpressionReminders()
+                editingReminder = nil
+            }
+        }
+    }
+
+    private var sortedExpressionReminders: [ExpressionReminder] {
+        expressionReminders.sorted {
+            $0.hour == $1.hour ? $0.minute < $1.minute : $0.hour < $1.hour
+        }
+    }
+
+    private var nextAvailableReminder: ExpressionReminder {
+        let occupiedMinutes = Set(expressionReminders.map { $0.hour * 60 + $0.minute })
+        let startingMinute = 9 * 60
+        let availableMinute = (0..<(24 * 60))
+            .map { (startingMinute + $0) % (24 * 60) }
+            .first { !occupiedMinutes.contains($0) } ?? 0
+
+        return ExpressionReminder(
+            hour: availableMinute / 60,
+            minute: availableMinute % 60,
+            message: "该休息一下了"
+        )
+    }
+
+    private func saveExpressionReminders() {
+        expressionReminders = sortedExpressionReminders
+        LauncherSettings.expressionReminders = expressionReminders
+        onConfigurationChanged()
     }
 
     private func choose(_ kind: LauncherItemKind) {
@@ -269,5 +415,69 @@ private struct SettingsView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let name = url.deletingPathExtension().lastPathComponent
         store.add(name: name, kind: kind, path: url.path)
+    }
+}
+
+private struct ExpressionReminderEditor: View {
+    let title: String
+    let reminder: ExpressionReminder
+    let existingReminders: [ExpressionReminder]
+    let onSave: (ExpressionReminder) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var time: Date
+    @State private var message: String
+
+    init(title: String, reminder: ExpressionReminder,
+         existingReminders: [ExpressionReminder],
+         onSave: @escaping (ExpressionReminder) -> Void) {
+        self.title = title
+        self.reminder = reminder
+        self.existingReminders = existingReminders
+        self.onSave = onSave
+        _time = State(initialValue: reminder.time)
+        _message = State(initialValue: reminder.message)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(title)
+                .font(.headline)
+
+            HStack {
+                Text("提醒时间")
+                DatePicker("", selection: $time, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+            }
+
+            TextField("提醒文案", text: $message)
+                .textFieldStyle(.roundedBorder)
+
+            if hasTimeConflict {
+                Text("该时间已存在提醒，请选择其他时间。")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+
+            HStack {
+                Spacer()
+                Button("取消", role: .cancel) {
+                    dismiss()
+                }
+                Button("保存") {
+                    onSave(reminder.with(time: time, message: message.trimmingCharacters(in: .whitespaces)))
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(hasTimeConflict || message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(22)
+        .frame(width: 360)
+    }
+
+    private var hasTimeConflict: Bool {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: time)
+        return existingReminders.contains {
+            $0.hour == components.hour && $0.minute == components.minute
+        }
     }
 }

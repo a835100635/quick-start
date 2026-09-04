@@ -18,6 +18,7 @@ struct EdgeLauncherView: View {
                     animationSpeed: model.animationSpeed,
                     onRight: onRight,
                     isExpanded: model.isExpanded,
+                    isOffWorkReminder: model.isOffWorkReminder,
                     openSettings: controller.openSettings,
                     launch: controller.launch
                 )
@@ -85,6 +86,11 @@ private struct EdgeTrigger: View {
         .help(triggerMode == .hover
               ? "Quick Start（悬浮展开，拖拽可调整位置）"
               : "Quick Start（点击展开，拖拽可调整位置）")
+        .contextMenu {
+            Button("退出 Quick Start", role: .destructive) {
+                NSApp.terminate(nil)
+            }
+        }
         .padding(onRight ? .trailing : .leading, 2)
     }
 }
@@ -140,6 +146,7 @@ private struct SemicircleMenu: View {
     let animationSpeed: Double
     let onRight: Bool
     let isExpanded: Bool
+    let isOffWorkReminder: Bool
     let openSettings: () -> Void
     let launch: (LauncherItem) -> Void
     @State private var revealed = false
@@ -153,29 +160,44 @@ private struct SemicircleMenu: View {
             let count = max(items.count, 1)
 
             ZStack {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    let target = point(for: index, count: count, center: center)
+                if !isOffWorkReminder {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        let target = point(for: index, count: count, center: center)
 
-                    RadialItemButton(item: item, diameter: iconSize, selected: false) {
-                        launch(item)
+                        RadialItemButton(item: item, diameter: iconSize, selected: false) {
+                            launch(item)
+                        }
+                        .position(target)
+                        // Start beneath the settings button and fly out along the arc.
+                        .offset(
+                            x: revealed ? 0 : center.x - target.x,
+                            y: revealed ? 0 : center.y - target.y
+                        )
+                        .scaleEffect(revealed ? 1 : 0.72)
+                        .opacity(revealed ? 1 : 0)
+                        .animation(
+                            .spring(response: 0.34 / animationSpeed, dampingFraction: 0.8)
+                                .delay(Double(index) * 0.045 / animationSpeed),
+                            value: revealed
+                        )
                     }
-                    .position(target)
-                    // Start beneath the settings button and fly out along the arc.
-                    .offset(
-                        x: revealed ? 0 : center.x - target.x,
-                        y: revealed ? 0 : center.y - target.y
-                    )
-                    .scaleEffect(revealed ? 1 : 0.72)
-                    .opacity(revealed ? 1 : 0)
-                    .animation(
-                        .spring(response: 0.34 / animationSpeed, dampingFraction: 0.8)
-                            .delay(Double(index) * 0.045 / animationSpeed),
-                        value: revealed
-                    )
                 }
 
-                SettingsButton(action: openSettings)
+                SettingsButton(
+                    action: openSettings,
+                    isOffWorkReminder: isOffWorkReminder
+                )
                     .position(center)
+                    // Let the settings button finish its return by leaving the
+                    // expanded panel before the edge capsule takes its place.
+                    .offset(x: isExpanded ? 0 : (onRight ? 60 : -60))
+                    .animation(
+                        isExpanded
+                            ? .easeOut(duration: 0.18 / animationSpeed)
+                            : .easeIn(duration: 0.18 / animationSpeed)
+                                .delay(0.62 / animationSpeed),
+                        value: isExpanded
+                    )
             }
         }
         .onAppear { revealed = isExpanded }
@@ -236,7 +258,10 @@ struct FullCircleMenuView: View {
                     )
                 }
 
-                SettingsButton(action: controller.openSettings)
+                SettingsButton(
+                    action: controller.openSettings,
+                    isOffWorkReminder: model.isOffWorkReminder
+                )
                     .position(center)
             }
         }
@@ -289,27 +314,190 @@ private struct RadialItemButton: View {
 
 private struct SettingsButton: View {
     let action: () -> Void
+    let isOffWorkReminder: Bool
+    private let diameter: CGFloat = 52
     @State private var isHovering = false
+    @State private var cursorLocation = CGPoint(x: 26, y: 26)
+    @State private var isBlinking = false
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: "gearshape.fill")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 52, height: 52)
-                .background {
+            let size = CGSize(width: diameter, height: diameter)
+            let leftEye = CGPoint(x: 18, y: 22)
+            let rightEye = CGPoint(x: 34, y: 22)
+
+            ZStack {
+                if isOffWorkReminder {
+                    SunglassesFace(diameter: diameter)
+                } else {
                     Circle()
-                        .fill(Color.accentColor.gradient)
-                        .overlay {
-                            Circle().stroke(Color.white.opacity(0.4), lineWidth: 1)
-                        }
+                        .fill(faceGradient)
+
+                    ZStack {
+                        faceEye(at: leftEye, in: size)
+                        faceEye(at: rightEye, in: size)
+
+                        SurprisedMouth()
+                            .fill(Color.black)
+                            .frame(width: 6, height: 5)
+                            .position(x: 26, y: 34)
+                            .opacity(isHovering ? 1 : 0)
+                        Rectangle()
+                            .fill(Color.black)
+                            .frame(width: 8, height: 1.5)
+                            .position(x: 26, y: 34)
+                            .opacity(isHovering ? 0 : 1)
+                    }
+                    .offset(faceOffset)
+                    .animation(.easeOut(duration: 0.12), value: cursorLocation)
+                    .animation(.easeOut(duration: 0.18), value: isHovering)
                 }
-                .shadow(color: Color.accentColor.opacity(0.45), radius: isHovering ? 12 : 7, y: 3)
-                .scaleEffect(isHovering ? 1.08 : 1)
+            }
+            .frame(width: diameter, height: diameter)
+            .contentShape(Circle())
+            .onContinuousHover(coordinateSpace: .local) { phase in
+                switch phase {
+                case .active(let location):
+                    isHovering = true
+                    cursorLocation = location
+                case .ended:
+                    isHovering = false
+                    cursorLocation = CGPoint(x: diameter / 2, y: diameter / 2)
+                }
+            }
         }
         .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
+        .task {
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64.random(in: 2_500_000_000...5_500_000_000))
+                } catch {
+                    return
+                }
+
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isBlinking = true
+                }
+
+                do {
+                    try await Task.sleep(nanoseconds: 120_000_000)
+                } catch {
+                    return
+                }
+
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isBlinking = false
+                }
+            }
+        }
         .help("打开 Quick Start 设置")
         .accessibilityLabel("打开 Quick Start 设置")
+        .contextMenu {
+            Button("退出 Quick Start", role: .destructive) {
+                NSApp.terminate(nil)
+            }
+        }
+    }
+
+    private var faceGradient: RadialGradient {
+        RadialGradient(
+            colors: [
+                Color(red: 1.0, green: 0.84, blue: 0.34),
+                Color(red: 1.0, green: 0.64, blue: 0.24)
+            ],
+            center: .center,
+            startRadius: 2,
+            endRadius: diameter * 0.62
+        )
+    }
+
+    @ViewBuilder
+    private func faceEye(at center: CGPoint, in size: CGSize) -> some View {
+        if isBlinking {
+            Capsule()
+                .fill(Color.black)
+                .frame(width: 6, height: 1)
+                .position(center)
+        } else {
+            ZStack {
+                Circle()
+                    .fill(Color.black)
+                    .frame(width: 6, height: 6)
+                    .opacity(isHovering ? 0 : 1)
+
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 12, height: 12)
+                    .overlay {
+                        Circle()
+                            .fill(Color.black)
+                            .frame(width: 4, height: 4)
+                            .offset(pupilOffset(for: center))
+                    }
+                    .opacity(isHovering ? 1 : 0)
+            }
+            .position(center)
+            .animation(.easeOut(duration: 0.18), value: isHovering)
+        }
+    }
+
+    private func pupilOffset(for eye: CGPoint) -> CGSize {
+        let dx = cursorLocation.x - eye.x
+        let dy = cursorLocation.y - eye.y
+        let distance = max(hypot(dx, dy), 0.001)
+        let travel = min(2.0, distance * 0.16)
+
+        return CGSize(
+            width: dx / distance * travel,
+            height: dy / distance * travel
+        )
+    }
+
+    private var faceOffset: CGSize {
+        guard isHovering else { return .zero }
+
+        return CGSize(
+            width: max(-3.2, min(3.2, (cursorLocation.x - diameter / 2) / (diameter / 2) * 3.2)),
+            height: max(-3.2, min(3.2, (cursorLocation.y - diameter / 2) / (diameter / 2) * 3.2))
+        )
+    }
+}
+
+private struct SunglassesFace: View {
+    let diameter: CGFloat
+
+    var body: some View {
+        Text("😎")
+            .font(.system(size: diameter * 0.88))
+            .lineLimit(1)
+        .frame(width: diameter, height: diameter)
+        .accessibilityLabel("下班提醒")
+    }
+}
+
+private struct SurprisedMouth: Shape {
+    func path(in rect: CGRect) -> Path {
+        let centerX = rect.midX
+        let curveHeight = rect.height * 0.52
+        let controlOffset = rect.width * 0.32
+        var path = Path()
+
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + curveHeight))
+        path.addCurve(
+            to: CGPoint(x: centerX, y: rect.minY),
+            control1: CGPoint(x: rect.minX, y: rect.minY + curveHeight * 0.15),
+            control2: CGPoint(x: centerX - controlOffset, y: rect.minY)
+        )
+        path.addCurve(
+            to: CGPoint(x: rect.maxX, y: rect.minY + curveHeight),
+            control1: CGPoint(x: centerX + controlOffset, y: rect.minY),
+            control2: CGPoint(x: rect.maxX, y: rect.minY + curveHeight * 0.15)
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.closeSubpath()
+
+        return path
     }
 }

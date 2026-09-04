@@ -23,6 +23,43 @@ enum LauncherTriggerMode: String, CaseIterable, Identifiable {
     }
 }
 
+struct ExpressionReminder: Codable, Identifiable, Equatable {
+    var id: UUID
+    var hour: Int
+    var minute: Int
+    var message: String
+
+    init(id: UUID = UUID(), hour: Int, minute: Int, message: String) {
+        self.id = id
+        self.hour = min(max(hour, 0), 23)
+        self.minute = min(max(minute, 0), 59)
+        self.message = message
+    }
+
+    var time: Date {
+        Calendar.current.date(
+            bySettingHour: hour,
+            minute: minute,
+            second: 0,
+            of: Date()
+        ) ?? Date()
+    }
+
+    var timeTitle: String {
+        String(format: "%02d:%02d", hour, minute)
+    }
+
+    func with(time: Date, message: String) -> ExpressionReminder {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: time)
+        return ExpressionReminder(
+            id: id,
+            hour: components.hour ?? hour,
+            minute: components.minute ?? minute,
+            message: message
+        )
+    }
+}
+
 enum LauncherSettings {
     private static let defaults = UserDefaults.standard
 
@@ -80,6 +117,56 @@ enum LauncherSettings {
             LauncherTriggerMode(rawValue: defaults.string(forKey: "triggerMode") ?? "") ?? .hover
         }
         set { defaults.set(newValue.rawValue, forKey: "triggerMode") }
+    }
+
+    static var offWorkReminderEnabled: Bool {
+        get { defaults.object(forKey: "offWorkReminderEnabled") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "offWorkReminderEnabled") }
+    }
+
+    static var offWorkReminderTime: Date {
+        get {
+            let calendar = Calendar.current
+            let hour = defaults.object(forKey: "offWorkReminderHour") as? Int ?? 18
+            let minute = defaults.object(forKey: "offWorkReminderMinute") as? Int ?? 0
+            return calendar.date(
+                bySettingHour: min(max(hour, 0), 23),
+                minute: min(max(minute, 0), 59),
+                second: 0,
+                of: Date()
+            ) ?? Date()
+        }
+        set {
+            let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+            defaults.set(components.hour ?? 18, forKey: "offWorkReminderHour")
+            defaults.set(components.minute ?? 0, forKey: "offWorkReminderMinute")
+        }
+    }
+
+    static var offWorkReminderMessage: String {
+        get { defaults.string(forKey: "offWorkReminderMessage") ?? "6 点要下班了" }
+        set { defaults.set(newValue, forKey: "offWorkReminderMessage") }
+    }
+
+    static var expressionReminders: [ExpressionReminder] {
+        get {
+            guard let data = defaults.data(forKey: "expressionReminders"),
+                  let reminders = try? JSONDecoder().decode([ExpressionReminder].self, from: data)
+            else {
+                let legacyTime = Calendar.current.dateComponents([.hour, .minute], from: offWorkReminderTime)
+                return [
+                    ExpressionReminder(
+                        hour: legacyTime.hour ?? 18,
+                        minute: legacyTime.minute ?? 0,
+                        message: offWorkReminderMessage
+                    )
+                ]
+            }
+            return reminders
+        }
+        set {
+            defaults.set(try? JSONEncoder().encode(newValue), forKey: "expressionReminders")
+        }
     }
 
     static var hasShownFirstLaunchGuide: Bool {
