@@ -45,6 +45,7 @@ struct EdgeLauncherView: View {
             maxHeight: .infinity,
             alignment: onRight ? .trailing : .leading
         )
+        .ignoresSafeArea()
     }
 }
 

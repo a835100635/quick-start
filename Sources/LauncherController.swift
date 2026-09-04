@@ -42,12 +42,14 @@ final class EdgeLauncherController: NSObject {
 
     var reminderFaceFrame: NSRect? {
         guard model.isMenuVisible else { return nil }
-        let onRight = LauncherSettings.edge == .right
+        let onRight = model.edge == .right
+        let faceSize: CGFloat = 52
+        let edgeInset: CGFloat = 8
         return NSRect(
-            x: onRight ? panel.frame.maxX - 60 : panel.frame.minX + 8,
-            y: panel.frame.midY - 26,
-            width: 52,
-            height: 52
+            x: onRight ? panel.frame.maxX - edgeInset - faceSize : panel.frame.minX + edgeInset,
+            y: panel.frame.midY - faceSize / 2,
+            width: faceSize,
+            height: faceSize
         )
     }
 
