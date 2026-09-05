@@ -84,6 +84,12 @@ final class EdgeLauncherController: NSObject {
         panel.orderOut(nil)
     }
 
+    func invalidate() {
+        collapseWork?.cancel()
+        panel.orderOut(nil)
+        panel.contentView = nil
+    }
+
     func layout() {
         layout(expanded: model.isMenuVisible)
     }
@@ -481,7 +487,10 @@ final class LauncherManager {
         let liveDisplays = Set(NSScreen.screens.compactMap(displayID(for:)))
         edgeLaunchers.keys
             .filter { !liveDisplays.contains($0) }
-            .forEach { edgeLaunchers.removeValue(forKey: $0) }
+            .forEach { id in
+                edgeLaunchers[id]?.invalidate()
+                edgeLaunchers.removeValue(forKey: id)
+            }
 
         for id in liveDisplays where edgeLaunchers[id] == nil {
             let controller = EdgeLauncherController(displayID: id)
