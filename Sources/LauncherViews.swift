@@ -19,13 +19,15 @@ struct EdgeLauncherView: View {
                     onRight: onRight,
                     isExpanded: model.isExpanded,
                     isOffWorkReminder: model.isOffWorkReminder,
-                    openSettings: controller.openSettings,
-                    launch: controller.launch
+                    openSettings: { [weak controller] in controller?.openSettings() },
+                    launch: { [weak controller] item in controller?.launch(item) }
                 )
                 EdgeDragHandle(
                     onRight: onRight,
-                    onDrag: { controller.moveTrigger(to: NSEvent.mouseLocation) },
-                    onDragEnded: controller.finishMovingTrigger
+                    onDrag: { [weak controller] in
+                        controller?.moveTrigger(to: NSEvent.mouseLocation)
+                    },
+                    onDragEnded: { [weak controller] in controller?.finishMovingTrigger() }
                 )
                 .zIndex(1)
                 .allowsHitTesting(model.isExpanded)
@@ -33,9 +35,11 @@ struct EdgeLauncherView: View {
                 EdgeTrigger(
                     onRight: onRight,
                     triggerMode: model.triggerMode,
-                    action: controller.expand,
-                    onDrag: { controller.moveTrigger(to: NSEvent.mouseLocation) },
-                    onDragEnded: controller.finishMovingTrigger
+                    action: { [weak controller] in controller?.expand() },
+                    onDrag: { [weak controller] in
+                        controller?.moveTrigger(to: NSEvent.mouseLocation)
+                    },
+                    onDragEnded: { [weak controller] in controller?.finishMovingTrigger() }
                 )
                     .transition(.opacity)
             }
@@ -242,8 +246,8 @@ struct FullCircleMenuView: View {
                     let target = fullPoint(for: index, count: count, center: center, radius: radius)
 
                     RadialItemButton(item: item, diameter: model.iconSize,
-                                     selected: item.id == model.selectedID) {
-                        controller.launch(item)
+                                     selected: item.id == model.selectedID) { [weak controller] in
+                        controller?.launch(item)
                     }
                     .position(target)
                     .offset(
@@ -260,7 +264,7 @@ struct FullCircleMenuView: View {
                 }
 
                 SettingsButton(
-                    action: controller.openSettings,
+                    action: { [weak controller] in controller?.openSettings() },
                     isOffWorkReminder: model.isOffWorkReminder
                 )
                     .position(center)
