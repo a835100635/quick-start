@@ -23,17 +23,72 @@ enum LauncherTriggerMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum ExpressionReminderSchedule: String, Codable, CaseIterable, Identifiable {
+    case fixed
+    case interval
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .fixed: return "定点"
+        case .interval: return "循环"
+        }
+    }
+}
+
 struct ExpressionReminder: Codable, Identifiable, Equatable {
     var id: UUID
     var hour: Int
     var minute: Int
     var message: String
+    var icon: String
+    var schedule: ExpressionReminderSchedule
+    var intervalSeconds: Int
 
-    init(id: UUID = UUID(), hour: Int, minute: Int, message: String) {
+    init(
+        id: UUID = UUID(),
+        hour: Int,
+        minute: Int,
+        message: String,
+        icon: String? = nil,
+        schedule: ExpressionReminderSchedule = .fixed,
+        intervalSeconds: Int = 30 * 60
+    ) {
         self.id = id
         self.hour = min(max(hour, 0), 23)
         self.minute = min(max(minute, 0), 59)
         self.message = message
+        let trimmedIcon = icon?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.icon = trimmedIcon.isEmpty ? Self.defaultIcon(for: message) : String(trimmedIcon.prefix(1))
+        self.schedule = schedule
+        self.intervalSeconds = min(max(intervalSeconds, 5), 24 * 60 * 60)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case hour
+        case minute
+        case message
+        case icon
+        case schedule
+        case intervalSeconds
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(UUID.self, forKey: .id),
+            hour: try container.decode(Int.self, forKey: .hour),
+            minute: try container.decode(Int.self, forKey: .minute),
+            message: try container.decode(String.self, forKey: .message),
+            icon: try container.decodeIfPresent(String.self, forKey: .icon),
+            schedule: try container.decodeIfPresent(
+                ExpressionReminderSchedule.self,
+                forKey: .schedule
+            ) ?? .fixed,
+            intervalSeconds: try container.decodeIfPresent(Int.self, forKey: .intervalSeconds) ?? 30 * 60
+        )
     }
 
     var time: Date {
@@ -50,13 +105,63 @@ struct ExpressionReminder: Codable, Identifiable, Equatable {
     }
 
     func with(time: Date, message: String) -> ExpressionReminder {
+        with(time: time, message: message, schedule: schedule, intervalSeconds: intervalSeconds)
+    }
+
+    func with(
+        time: Date,
+        message: String,
+        schedule: ExpressionReminderSchedule,
+        intervalSeconds: Int
+    ) -> ExpressionReminder {
         let components = Calendar.current.dateComponents([.hour, .minute], from: time)
         return ExpressionReminder(
             id: id,
             hour: components.hour ?? hour,
             minute: components.minute ?? minute,
-            message: message
+            message: message,
+            icon: icon,
+            schedule: schedule,
+            intervalSeconds: intervalSeconds
         )
+    }
+
+    func with(
+        time: Date,
+        message: String,
+        icon: String,
+        schedule: ExpressionReminderSchedule,
+        intervalSeconds: Int
+    ) -> ExpressionReminder {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: time)
+        return ExpressionReminder(
+            id: id,
+            hour: components.hour ?? hour,
+            minute: components.minute ?? minute,
+            message: message,
+            icon: icon,
+            schedule: schedule,
+            intervalSeconds: intervalSeconds
+        )
+    }
+
+    var intervalTitle: String {
+        if intervalSeconds < 60 {
+            return "\(intervalSeconds) 秒"
+        }
+        if intervalSeconds % 3600 == 0 {
+            return "\(intervalSeconds / 3600) 小时"
+        }
+        return "\(intervalSeconds / 60) 分钟"
+    }
+
+    static func defaultIcon(for message: String) -> String {
+        if message.contains("水") { return "💧" }
+        if message.contains("耳机") { return "🎵" }
+        if message.contains("站") || message.contains("活动") { return "🤓" }
+        if message.contains("外卖") { return "🍟" }
+        if message.contains("摸鱼") { return "🐠" }
+        return "🔔"
     }
 }
 
@@ -122,6 +227,14 @@ enum LauncherSettings {
     static var offWorkReminderEnabled: Bool {
         get { defaults.object(forKey: "offWorkReminderEnabled") as? Bool ?? true }
         set { defaults.set(newValue, forKey: "offWorkReminderEnabled") }
+    }
+
+    static var notificationPauseDuration: Double {
+        get {
+            let value = defaults.double(forKey: "notificationPauseDuration")
+            return (1...10).contains(value) ? value : 3.5
+        }
+        set { defaults.set(min(max(newValue, 1), 10), forKey: "notificationPauseDuration") }
     }
 
     static var offWorkReminderTime: Date {

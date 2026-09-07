@@ -413,6 +413,7 @@ final class LauncherManager {
     private var firstLaunchGuide: FirstLaunchGuideController?
     private var offWorkReminderTimer: Timer?
     private var offWorkReminderBubble: OffWorkReminderController?
+    private var reminderDismissWork: DispatchWorkItem?
     private var isPresentingOffWorkReminder = false
 
     init() {
@@ -528,6 +529,10 @@ final class LauncherManager {
     }
 
     private func nextReminderDate(for reminder: ExpressionReminder, from now: Date) -> Date {
+        if reminder.schedule == .interval {
+            return now.addingTimeInterval(TimeInterval(reminder.intervalSeconds))
+        }
+
         let calendar = Calendar.current
         var today = calendar.dateComponents([.year, .month, .day], from: now)
         today.hour = reminder.hour
@@ -575,10 +580,21 @@ final class LauncherManager {
         ) { [weak self] in
             self?.dismissOffWorkReminder()
         }
+
+        let dismissWork = DispatchWorkItem { [weak self] in
+            self?.dismissOffWorkReminder()
+        }
+        reminderDismissWork = dismissWork
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + LauncherSettings.notificationPauseDuration,
+            execute: dismissWork
+        )
     }
 
     private func dismissOffWorkReminder() {
         guard isPresentingOffWorkReminder else { return }
+        reminderDismissWork?.cancel()
+        reminderDismissWork = nil
         isPresentingOffWorkReminder = false
         offWorkReminderBubble?.dismiss()
         offWorkReminderBubble = nil
