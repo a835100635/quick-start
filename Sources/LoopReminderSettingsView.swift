@@ -2,16 +2,49 @@ import AppKit
 import SwiftUI
 
 private enum LoopReminderPalette {
-    // Use semantic AppKit colors so the custom settings UI follows macOS
-    // appearance changes instead of rendering light backgrounds under dark text.
-    static let content = Color(nsColor: .windowBackgroundColor)
-    static let sidebar = Color(nsColor: .underPageBackgroundColor)
-    static let sidebarSelection = Color(nsColor: .selectedControlColor)
-    static let card = Color(nsColor: .controlBackgroundColor)
-    static let selectedCard = Color.accentColor.opacity(0.12)
-    static let selectedBorder = Color.accentColor.opacity(0.8)
-    static let neutralButton = Color(nsColor: .controlColor)
-    static let greenButton = Color.green.opacity(0.12)
+    // Keep the original palette in light mode while providing explicit dark
+    // colors, rather than relying on AppKit semantic colors with different
+    // light-mode values.
+    static let content = adaptive(
+        light: NSColor(red: 0.995, green: 0.997, blue: 1.0, alpha: 1),
+        dark: NSColor(red: 0.12, green: 0.12, blue: 0.13, alpha: 1)
+    )
+    static let sidebar = adaptive(
+        light: NSColor(red: 0.965, green: 0.975, blue: 0.985, alpha: 1),
+        dark: NSColor(red: 0.17, green: 0.17, blue: 0.18, alpha: 1)
+    )
+    static let sidebarSelection = adaptive(
+        light: NSColor(red: 0.855, green: 0.855, blue: 0.865, alpha: 1),
+        dark: NSColor(red: 0.28, green: 0.28, blue: 0.30, alpha: 1)
+    )
+    static let card = adaptive(
+        light: NSColor(red: 0.985, green: 0.985, blue: 0.99, alpha: 1),
+        dark: NSColor(red: 0.18, green: 0.18, blue: 0.19, alpha: 1)
+    )
+    static let selectedCard = adaptive(
+        light: NSColor(red: 0.925, green: 0.975, blue: 1.0, alpha: 1),
+        dark: NSColor(red: 0.13, green: 0.24, blue: 0.32, alpha: 1)
+    )
+    static let selectedBorder = adaptive(
+        light: NSColor(red: 0.30, green: 0.70, blue: 0.94, alpha: 1),
+        dark: NSColor(red: 0.32, green: 0.68, blue: 0.94, alpha: 1)
+    )
+    static let neutralButton = adaptive(
+        light: NSColor(red: 0.925, green: 0.925, blue: 0.935, alpha: 1),
+        dark: NSColor(red: 0.25, green: 0.25, blue: 0.27, alpha: 1)
+    )
+    static let greenButton = adaptive(
+        light: NSColor(red: 0.94, green: 0.99, blue: 0.96, alpha: 1),
+        dark: NSColor(red: 0.12, green: 0.28, blue: 0.18, alpha: 1)
+    )
+
+    private static func adaptive(light: NSColor, dark: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? dark
+                : light
+        })
+    }
 }
 
 private enum UpdateCheckState {
