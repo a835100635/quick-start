@@ -31,38 +31,22 @@ private extension UpdateCheckState {
     }
 }
 
-private struct GitHubRelease: Decodable {
-    let tagName: String
-    let htmlURL: URL
-    let assets: [GitHubReleaseAsset]
-
-    private enum CodingKeys: String, CodingKey {
-        case tagName = "tag_name"
-        case htmlURL = "html_url"
-        case assets
-    }
-}
-
-private struct GitHubReleaseAsset: Decodable {
-    let name: String
-    let browserDownloadURL: URL
-
-    private enum CodingKeys: String, CodingKey {
-        case name
-        case browserDownloadURL = "browser_download_url"
-    }
-}
-
 private enum UpdateCheckError: LocalizedError {
-    case invalidResponse
+    case invalidResponse(statusCode: Int)
     case releaseUnavailable
+    case invalidReleaseURL
+    case rateLimited
 
     var errorDescription: String? {
         switch self {
-        case .invalidResponse:
-            return "服务器返回了无效的更新信息"
+        case .invalidResponse(let statusCode):
+            return "更新服务器返回了错误（HTTP \(statusCode)）"
         case .releaseUnavailable:
             return "暂时没有可用的正式版本"
+        case .invalidReleaseURL:
+            return "无法识别最新版本信息"
+        case .rateLimited:
+            return "更新服务请求过于频繁，请稍后重试"
         }
     }
 }
@@ -395,30 +379,41 @@ struct LoopReminderSettingsView: View {
 
         do {
             var request = URLRequest(
-                url: URL(string: "https://api.github.com/repos/a835100635/quick-start/releases/latest")!
+                url: URL(string: "https://github.com/a835100635/quick-start/releases/latest")!
             )
-            request.timeoutInterval = 8
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.timeoutInterval = 12
+            request.setValue("text/html", forHTTPHeaderField: "Accept")
             request.setValue("QuickStart/\(currentVersion)", forHTTPHeaderField: "User-Agent")
 
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse
             else {
-                throw UpdateCheckError.invalidResponse
+                throw UpdateCheckError.invalidReleaseURL
             }
 
-            let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
-            let latestVersion = normalizedVersion(release.tagName)
+            guard httpResponse.statusCode == 200 else {
+                if httpResponse.statusCode == 403 {
+                    throw UpdateCheckError.rateLimited
+                }
+                throw UpdateCheckError.invalidResponse(statusCode: httpResponse.statusCode)
+            }
+
+            guard let releaseURL = httpResponse.url,
+                  let tagName = latestReleaseTag(from: releaseURL)
+            else {
+                throw UpdateCheckError.invalidReleaseURL
+            }
+
+            let latestVersion = normalizedVersion(tagName)
             if isVersion(latestVersion, newerThan: normalizedVersion(currentVersion)) {
-                guard let asset = release.assets.first(where: {
-                    $0.name.lowercased().hasSuffix(".dmg")
-                }) else {
+                guard let downloadURL = releaseDownloadURL(for: tagName, version: latestVersion) else {
                     throw UpdateCheckError.releaseUnavailable
                 }
                 updateState = .available(
                     version: latestVersion,
-                    releaseURL: release.htmlURL,
-                    downloadURL: asset.browserDownloadURL
+                    releaseURL: releaseURL,
+                    downloadURL: downloadURL
                 )
             } else {
                 updateState = .upToDate
@@ -440,7 +435,8 @@ struct LoopReminderSettingsView: View {
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200
             else {
-                throw UpdateCheckError.invalidResponse
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+                throw UpdateCheckError.invalidResponse(statusCode: statusCode)
             }
 
             let downloadsDirectory = FileManager.default.urls(
@@ -504,6 +500,28 @@ struct LoopReminderSettingsView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             NSApp.terminate(nil)
         }
+    }
+
+    private func latestReleaseTag(from url: URL) -> String? {
+        let pathComponents = url.pathComponents
+        guard let tagIndex = pathComponents.firstIndex(of: "tag"),
+              pathComponents.index(after: tagIndex) < pathComponents.endIndex
+        else {
+            return nil
+        }
+
+        let tag = pathComponents[pathComponents.index(after: tagIndex)]
+        let isVersionTag = tag.range(
+            of: #"^v?[0-9]+(\.[0-9]+){2}$"#,
+            options: .regularExpression
+        ) != nil
+        return isVersionTag ? tag : nil
+    }
+
+    private func releaseDownloadURL(for tag: String, version: String) -> URL? {
+        URL(
+            string: "https://github.com/a835100635/quick-start/releases/download/\(tag)/QuickStart-\(version).dmg"
+        )
     }
 
     private func normalizedVersion(_ version: String) -> String {
