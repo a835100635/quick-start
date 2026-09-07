@@ -232,7 +232,7 @@ struct LoopReminderSettingsView: View {
                 VStack(spacing: 10) {
                     Text("Quick Start")
                         .font(.title3.weight(.semibold))
-                    Text("版本 1.1.0")
+                    Text("版本 1.0.6")
                         .foregroundStyle(.secondary)
                     Text("让每一次休息都刚刚好。")
                         .foregroundStyle(.secondary)
@@ -371,7 +371,7 @@ struct LoopReminderSettingsView: View {
     }
 
     private var currentVersion: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.0"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.6"
     }
 
     private func checkForUpdates() async {
