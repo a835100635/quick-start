@@ -17,7 +17,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         )
         window.title = "Quick Start 设置"
         window.minSize = NSSize(width: 900, height: 650)
-        window.backgroundColor = NSColor(calibratedRed: 0.995, green: 0.997, blue: 1.0, alpha: 1)
+        window.backgroundColor = .windowBackgroundColor
         window.titlebarSeparatorStyle = .none
         window.titlebarAppearsTransparent = false
         window.isReleasedWhenClosed = false

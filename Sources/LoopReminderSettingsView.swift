@@ -2,14 +2,16 @@ import AppKit
 import SwiftUI
 
 private enum LoopReminderPalette {
-    static let content = Color(red: 0.995, green: 0.997, blue: 1.0)
-    static let sidebar = Color(red: 0.965, green: 0.975, blue: 0.985)
-    static let sidebarSelection = Color(red: 0.855, green: 0.855, blue: 0.865)
-    static let card = Color(red: 0.985, green: 0.985, blue: 0.99)
-    static let selectedCard = Color(red: 0.925, green: 0.975, blue: 1.0)
-    static let selectedBorder = Color(red: 0.30, green: 0.70, blue: 0.94)
-    static let neutralButton = Color(red: 0.925, green: 0.925, blue: 0.935)
-    static let greenButton = Color(red: 0.94, green: 0.99, blue: 0.96)
+    // Use semantic AppKit colors so the custom settings UI follows macOS
+    // appearance changes instead of rendering light backgrounds under dark text.
+    static let content = Color(nsColor: .windowBackgroundColor)
+    static let sidebar = Color(nsColor: .underPageBackgroundColor)
+    static let sidebarSelection = Color(nsColor: .selectedControlColor)
+    static let card = Color(nsColor: .controlBackgroundColor)
+    static let selectedCard = Color.accentColor.opacity(0.12)
+    static let selectedBorder = Color.accentColor.opacity(0.8)
+    static let neutralButton = Color(nsColor: .controlColor)
+    static let greenButton = Color.green.opacity(0.12)
 }
 
 private enum UpdateCheckState {
