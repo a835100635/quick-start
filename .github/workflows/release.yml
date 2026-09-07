@@ -1,9 +1,9 @@
 name: Release
 
 on:
-  pull_request:
+  push:
     branches: [master]
-    types: [closed]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,7 +14,6 @@ concurrency:
 
 jobs:
   release:
-    if: github.event.pull_request.merged == true
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
